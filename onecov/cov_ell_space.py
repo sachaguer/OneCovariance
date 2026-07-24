@@ -1774,7 +1774,7 @@ class CovELLSpace(PolySpectra):
                     del nongauss[2-subtract]
                     subtract += 1
                 else:
-                    nongauss[2][:, :, :, :, :, :, :, :] *= np.ones_like(nongauss[2][:, :, :, :, :, :, :, :])/(max(survey_params_dict['survey_area_clust'],survey_params_dict['survey_area_lens'])/self.deg2torad2)
+                    nongauss[2][:, :, :, :, :, :, :, :] *= np.ones_like(nongauss[2][:, :, :, :, :, :, :, :])/(max(survey_params_dict['survey_area_clust'],survey_params_dict['survey_area_lens'][0])/self.deg2torad2)
                     nongauss_new.append(nongauss[2][:, :, :, :, :, :, :, :])
             else:
                 nongauss_new.append(0)
@@ -1814,7 +1814,7 @@ class CovELLSpace(PolySpectra):
                     del nongauss[4-subtract]
                     subtract += 1
                 else:
-                    nongauss[4][:, :, :, :, :, :, :, :] *= np.ones_like(nongauss[4][:, :, :, :, :, :, :, :])/(max(survey_params_dict['survey_area_lens'],survey_params_dict['survey_area_ggl'])/self.deg2torad2)
+                    nongauss[4][:, :, :, :, :, :, :, :] *= np.ones_like(nongauss[4][:, :, :, :, :, :, :, :])/(max(survey_params_dict['survey_area_lens'][0],survey_params_dict['survey_area_ggl'])/self.deg2torad2)
                     nongauss_new.append(nongauss[4][:, :, :, :, :, :, :, :])
             else:
                 nongauss_new.append(0)
@@ -1823,6 +1823,7 @@ class CovELLSpace(PolySpectra):
                     print("Binning non-Gaussian mmmm contribution")
                     nongauss_new.append(self.__bin_cov_ell_nongauss(self.ellrange_lensing_ul,
                                                               self.ellrange_lensing_ul,
+                                                              self.ellrange_lensing,
                                                               self.ellrange_lensing,
                                                               survey_params_dict['survey_area_lens'][0],
                                                               survey_params_dict['survey_area_lens'][0],
@@ -1833,7 +1834,7 @@ class CovELLSpace(PolySpectra):
                     del nongauss[5-subtract]
                     subtract += 1
                 else:
-                    nongauss[5][:, :, :, :, :, :, :, :] *= np.ones_like(nongauss[5][:, :, :, :, :, :, :, :])/(survey_params_dict['survey_area_lens']/self.deg2torad2)
+                    nongauss[5][:, :, :, :, :, :, :, :] *= np.ones_like(nongauss[5][:, :, :, :, :, :, :, :])/(survey_params_dict['survey_area_lens'][0]/self.deg2torad2)
                     nongauss_new.append(nongauss[5][:, :, :, :, :, :, :, :])
             else:
                 nongauss_new.append(0)
