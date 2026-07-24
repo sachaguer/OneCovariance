@@ -2369,7 +2369,7 @@ class CovELLSpace(PolySpectra):
             if field1_spec:
                 area_12 = survey_params_dict['survey_area_ggl'][0]
         if probe12 == "lens":
-            area_12 = survey_params_dict['survey_area_lens']
+            area_12 = survey_params_dict['survey_area_lens'][0]
 
         if probe34 == "clust":
             area_34 = survey_params_dict['survey_area_clust'][1]
@@ -2382,7 +2382,7 @@ class CovELLSpace(PolySpectra):
             if field1_spec:
                 area_34 = survey_params_dict['survey_area_ggl'][0]
         if probe34 == "lens":
-            area_34 = survey_params_dict['survey_area_lens']
+            area_34 = survey_params_dict['survey_area_lens'][0]
 
         if probe12 == "clust" and probe34 == "clust":
             lo_limit_1 = covELLspacesettings['n_spec']
@@ -2555,6 +2555,10 @@ class CovELLSpace(PolySpectra):
                                         for l_tomo in range(l_tomo_start, len(cov[0,0,0,0,0,0,0,:])):
                                             if len(np.where(np.diagonal(cov[:, :, i_sample, j_sample, i_tomo, j_tomo, k_tomo, l_tomo]))[0]):
                                                 spline = UnivariateSpline(self.ellrange, np.diagonal(cov[:, :, i_sample, j_sample, i_tomo, j_tomo, k_tomo, l_tomo]), k=1, s=0, ext=1)
+                                                print(fsky)
+                                                print(len(integration_ell_12))
+                                                print(len(integration_ell_34))
+                                                print(np.sum(spline(overlapping_elements)/(2.*overlapping_elements + 1)))
                                                 binned_covariance[i_ell, j_ell, i_sample, j_sample, i_tomo, j_tomo, k_tomo, l_tomo] = np.sum(spline(overlapping_elements)/(2.*overlapping_elements + 1))/fsky/len(integration_ell_12)/len(integration_ell_34)
         return binned_covariance            
 
