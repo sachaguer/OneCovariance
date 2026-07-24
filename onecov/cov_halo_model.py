@@ -1,19 +1,17 @@
-import numpy as np
-from scipy.interpolate import UnivariateSpline, RectBivariateSpline
-from scipy.special import sici, erf
-from scipy.integrate import simpson
-from astropy import units as u   
 import camb
-from camb import model, initialpower
-
-
 import hmf
+import numpy as np
+from camb import model
+from scipy.integrate import simpson
+from scipy.interpolate import RectBivariateSpline, UnivariateSpline
+from scipy.special import erf, sici
+
 try:
-    from onecov.cov_setup import Setup
     from onecov.cov_hod import HOD
+    from onecov.cov_setup import Setup
 except:
-    from cov_setup import Setup
     from cov_hod import HOD
+    from cov_setup import Setup
 
 
 class HaloModel(Setup):
@@ -160,8 +158,22 @@ class HaloModel(Setup):
         self.norm_bias = -1
         self.effective_bias = self.calc_effective_bias(
             bias_dict, hod_dict, prec['hm'])
-        self.set_spline_galaxy_stellar_mf(hod_dict)
-        self.set_spline_galaxy_stellar_mf_bias(hod_dict, bias_dict, prec['hm'])
+        if self.hod.mass_bins_disagree:
+            save_bias = bias_dict.copy()
+            if bias_dict['logmass_bins_upper'] is not None and bias_dict['logmass_bins_upper'] is not None:
+                bias_dict['logmass_bins_upper'][-1] = bias_dict['csmf_log10M_bins'][-1]
+                bias_dict['logmass_bins_lower'][0] = bias_dict['csmf_log10M_bins'][0]
+            else:
+                bias_dict['logmass_bins'][0] = bias_dict['csmf_log10M_bins'][0]
+                bias_dict['logmass_bins'][-1] = bias_dict['csmf_log10M_bins'][-1]
+            self.hod.hod_update(bias_dict, prec['hm'])
+            self.set_spline_galaxy_stellar_mf(hod_dict)
+            self.set_spline_galaxy_stellar_mf_bias(hod_dict, bias_dict, prec['hm'])
+            bias_dict = save_bias
+            self.hod.hod_update(bias_dict, prec['hm'])
+        else:
+            self.set_spline_galaxy_stellar_mf(hod_dict)
+            self.set_spline_galaxy_stellar_mf_bias(hod_dict, bias_dict, prec['hm'])
         self.zet= zet
 
     def calc_mass_func(self,
@@ -702,11 +714,12 @@ class HaloModel(Setup):
         hurlyX = self.hurly_x(bias_dict, hod_dict, type_x)
 
         hurly_shape = hurlyX.shape
+        log10k = np.log10(self.mass_func.k)
         hurlyX_spline = [[] for _ in range(hurly_shape[1])]
         for nbin in range(hurly_shape[1]):
             for idxM in range(hurly_shape[2]):
                 hurlyX_spline[nbin].append(UnivariateSpline(
-                    np.log10(self.mass_func.k),
+                    log10k,
                     hurlyX[:, nbin, idxM], s=0, ext=0))
 
         return hurlyX_spline
@@ -761,11 +774,14 @@ class HaloModel(Setup):
                 hurlyX = \
                     self.hurly_x(bias_dict, hod_dict, 'cen') \
                     + self.hurly_x(bias_dict, hod_dict, 'sat')
-                bias = self.bias(bias_dict, hm_prec) * bias_dict['bias_2h']
+                bias = self.bias(bias_dict, hm_prec) * bias_dict['bias_2h']*self.norm_bias
+                norm = simpson(self.mass_func.dndm * bias *
+                              self.mass_func.m, x = self.mass_func.m) / self.rho_bg
+                Abmin = (1-norm)*self.rho_bg/self.mass_func.m[0]
                 integral_x = simpson(self.mass_func.dndm
                                       * bias
                                       * hurlyX,
-                                     x = self.mass_func.m)
+                                     x = self.mass_func.m) + Abmin*hurlyX[:, :, 0]
             if type_x == 'm':
                 M_min_save = hm_prec["log10M_min"]
                 step_save = self.mass_func.dlog10m
@@ -777,9 +793,12 @@ class HaloModel(Setup):
                 self.hod.hod_update(bias_dict, hm_prec)
 
                 hurlyX = self.hurly_x(bias_dict, hod_dict, 'm')
-                bias = self.bias(bias_dict, hm_prec)
+                bias = self.bias(bias_dict, hm_prec) * bias_dict['bias_2h']*self.norm_bias
+                norm = simpson(self.mass_func.dndm * bias *
+                              self.mass_func.m, x = self.mass_func.m) / self.rho_bg
+                Abmin = (1-norm)*self.rho_bg/self.mass_func.m[0]
                 integral_x = simpson(
-                    self.mass_func.dndm * hurlyX * bias, x = self.mass_func.m)
+                    self.mass_func.dndm * hurlyX * bias, x = self.mass_func.m) + Abmin*hurlyX[:, :, 0]
 
                 hm_prec["log10M_min"] = M_min_save
                 self.mass_func.update(Mmin=M_min_save, dlog10m=step_save)
@@ -815,11 +834,11 @@ class HaloModel(Setup):
                                                                 alpha,
                                                                 type_x))
         integralX_shape = integralX.shape
-
+        log10k = np.log10(self.mass_func.k)
         integralX_spline = []
         for nbin in range(integralX_shape[1]):
             integralX_spline.append(
-                UnivariateSpline(np.log10(self.mass_func.k),
+                UnivariateSpline(log10k,
                                  integralX[:, nbin],
                                  k=1, s=0, ext=0))
 
@@ -882,30 +901,31 @@ class HaloModel(Setup):
             correct = 0
             bias = 1
 
-            if type_x == 'g':
-                hurlyX = \
-                    self.hurly_x(bias_dict, hod_dict, 'cen') \
-                    + self.hurly_x(bias_dict, hod_dict, 'sat')
-                bias = self.bias(bias_dict, hm_prec) * bias_dict['bias_2h']
-            elif type_x == 'm':
-                hurlyX = self.hurly_x(bias_dict, hod_dict, 'm')
+            is_mm = (type_x == 'm' and type_y == 'm')
+            if type_x == 'g' or type_y == 'g':
+                hurly_cen = self.hurly_x(bias_dict, hod_dict, 'cen')
+                hurly_sat = self.hurly_x(bias_dict, hod_dict, 'sat')
+            if (type_x == 'm' or type_y == 'm') and not is_mm:
+                hurly_m = self.hurly_x(bias_dict, hod_dict, 'm')
+            if not is_mm:
+                bias_val = self.bias(bias_dict, hm_prec)
 
-            if (type_y == 'g'):
-                hurlyY = \
-                    self.hurly_x(bias_dict, hod_dict, 'cen') \
-                    + self.hurly_x(bias_dict, hod_dict, 'sat')
-                bias = self.bias(bias_dict, hm_prec) * bias_dict['bias_2h']
-            elif type_y == 'm':
-                hurlyY = self.hurly_x(bias_dict, hod_dict, 'm')
-                bias = self.bias(bias_dict, hm_prec)
+            if type_x == 'g':
+                hurlyX = hurly_cen + hurly_sat
+                bias = bias_val * bias_dict['bias_2h']
+            elif type_x == 'm' and not is_mm:
+                hurlyX = hurly_m
+
+            if type_y == 'g':
+                hurlyY = hurly_cen + hurly_sat
+                bias = bias_val * bias_dict['bias_2h']
+            elif type_y == 'm' and not is_mm:
+                hurlyY = hurly_m
+                bias = bias_val
 
             if type_x == 'g' and type_y == 'g':
-                correct = \
-                    self.hurly_x(
-                        bias_dict, hod_dict, 'cen')[:, None, :,  None, :] \
-                    * self.hurly_x(
-                        bias_dict, hod_dict, 'cen')[None, :, None, :, :]
-                bias = self.bias(bias_dict, hm_prec)
+                correct = hurly_cen[:, None, :, None, :] * hurly_cen[None, :, None, :, :]
+                bias = bias_val
 
             if type_x == 'm' and type_y == 'm':
                 M_min_save = hm_prec["log10M_min"]
@@ -970,13 +990,14 @@ class HaloModel(Setup):
                                                                   type_y))
 
         integralXY_shape = integralXY.shape
+        log10k = np.log10(self.mass_func.k)
         integralXY_spline = []
         for nbin in range(integralXY_shape[2]):
             integralXY_spline.append([])
             for mbin in range(integralXY_shape[3]):
                 integralXY_spline[nbin].append(RectBivariateSpline(
-                    np.log10(self.mass_func.k),
-                    np.log10(self.mass_func.k),
+                    log10k,
+                    log10k,
                     integralXY[:, :, nbin, mbin],
                     kx=1, ky=1, s=0))
 
@@ -1047,6 +1068,7 @@ class HaloModel(Setup):
             self.mass_func.update(Mmin=M_min_save, dlog10m=step_save)
             hm_prec['M_bins'] = len(self.mass_func.m)
             self.hod.hod_update(bias_dict, hm_prec)
+            
 
         return integral_mmm
 
@@ -1076,9 +1098,10 @@ class HaloModel(Setup):
                                                                     hm_prec,
                                                                     alpha))
 
+        log10k = np.log10(self.mass_func.k)
         return RectBivariateSpline(
-            np.log10(self.mass_func.k),
-            np.log10(self.mass_func.k),
+            log10k,
+            log10k,
             integralmmm[:, :, 0],
             kx=1, ky=1, s=0)
 
@@ -1188,9 +1211,10 @@ class HaloModel(Setup):
         aux_M[(len(self.hod.Mbins[:,0]) - 1)*len(self.hod.Mbins[0,:-1]):] = self.hod.Mbins[len(self.hod.Mbins[:,0]) - 1,:]
         aux_c[(len(self.hod.Mbins[:,0]) - 1)*len(self.hod.Mbins[0,:-1]):] = aux_smf_c[len(self.hod.Mbins[:,0]) - 1,:]
         aux_s[(len(self.hod.Mbins[:,0]) - 1)*len(self.hod.Mbins[0,:-1]):] = aux_smf_s[len(self.hod.Mbins[:,0]) - 1,:]
-        self.stellar_mass = aux_M
-        self.galaxy_smf_c = UnivariateSpline(np.array(aux_M), np.array(aux_c) , k=2, s=0, ext=0)
-        self.galaxy_smf_s = UnivariateSpline(np.array(aux_M), np.array(aux_s) , k=2, s=0, ext=0)
+        indices = np.unique(aux_M,return_index = True)[1]
+        
+        self.galaxy_smf_c = UnivariateSpline(aux_M[indices], np.array(aux_c)[indices] , k=2, s=0, ext=0)
+        self.galaxy_smf_s = UnivariateSpline(aux_M[indices], np.array(aux_s)[indices] , k=2, s=0, ext=0)
 
     def set_spline_galaxy_stellar_mf_bias(self,
                                             hod_dict,bias_dict, hm_prec):
@@ -1219,8 +1243,10 @@ class HaloModel(Setup):
         aux_M[(len(self.hod.Mbins[:,0]) - 1)*len(self.hod.Mbins[0,:-1]):] = self.hod.Mbins[len(self.hod.Mbins[:,0]) - 1,:]
         aux_c[(len(self.hod.Mbins[:,0]) - 1)*len(self.hod.Mbins[0,:-1]):] = aux_smf_c[len(self.hod.Mbins[:,0]) - 1,:]
         aux_s[(len(self.hod.Mbins[:,0]) - 1)*len(self.hod.Mbins[0,:-1]):] = aux_smf_s[len(self.hod.Mbins[:,0]) - 1,:]
-        self.galaxy_smf_bias_c = UnivariateSpline(np.array(aux_M), np.array(aux_c) , k=2, s=0, ext=0)
-        self.galaxy_smf_bias_s = UnivariateSpline(np.array(aux_M), np.array(aux_s) , k=2, s=0, ext=0)        
+        
+        indices = np.unique(aux_M,return_index = True)[1]
+        self.galaxy_smf_bias_c = UnivariateSpline(np.array(aux_M)[indices], np.array(aux_c)[indices], k=2, s=0, ext=0)
+        self.galaxy_smf_bias_s = UnivariateSpline(np.array(aux_M)[indices], np.array(aux_s)[indices], k=2, s=0, ext=0)        
 
     def conditional_galaxy_stellar_mf(self,
                                       hod_dict,
@@ -1299,7 +1325,7 @@ class HaloModel(Setup):
         """
         halo_profile = self.uk(bias_dict)
         halo_bias = self.bias(bias_dict,hm_prec)
-        csmf = self.conditional_galaxy_stellar_mf(hod_dict,'cen')
+        csmf = self.conditional_galaxy_stellar_mf(hod_dict,'cen') + self.conditional_galaxy_stellar_mf(hod_dict,'sat')
         term1 = self.mass_func.dndm[None, None, None, :]*csmf[None, :, :, :]*(self.mass_func.m**2)[None, None, None,:]/self.rho_bg**2*(halo_profile**2)[:, None, None, :]
         term2 = self.mass_func.dndm[None, None, None, :]*csmf[None, :, :, :]*(self.mass_func.m)[None, None, None,:]/self.rho_bg*(halo_profile)[:, None, None, :]*halo_bias[None, None , None, :]
         term3 = self.mass_func.dndm[None,:]*(self.mass_func.m)[None,:]/self.rho_bg*(halo_profile)[:, :]*halo_bias[None,:]
@@ -1331,11 +1357,32 @@ class HaloModel(Setup):
             with the following keys (To be passed from the read_input method
             of the Input class.)
         """
-
-        aux_M = self.hod.Mbins.reshape(len(self.hod.Mbins[0,:])*len(self.hod.Mbins[:,0]))
-        aux_bispec_count_mm = self.count_matter_bispectrum(bias_dict, hod_dict, hm_prec)
-        aux_bispec_count_mm = aux_bispec_count_mm.reshape((len(aux_bispec_count_mm[:,0,0]), len(self.hod.Mbins[0,:])*len(self.hod.Mbins[:,0])))
-        count_matter_bispec = np.zeros((len(self.mass_func.k), len(log10csmf_mass_bins)))
-        for i_k in range(len(self.mass_func.k)):
-            count_matter_bispec[i_k, :] = np.exp(np.interp(log10csmf_mass_bins,np.log10(aux_M), np.log(aux_bispec_count_mm[i_k,:])))
+        if self.hod.mass_bins_disagree:
+            save_bias = bias_dict.copy()
+            if bias_dict['logmass_bins_upper'] is not None and bias_dict['logmass_bins_upper'] is not None:
+                bias_dict['logmass_bins_upper'][-1] = bias_dict['csmf_log10M_bins'][-1]
+                bias_dict['logmass_bins_lower'][0] = bias_dict['csmf_log10M_bins'][0]
+            else:
+                bias_dict['logmass_bins'][0] = bias_dict['csmf_log10M_bins'][0]
+                bias_dict['logmass_bins'][-1] = bias_dict['csmf_log10M_bins'][-1]
+            self.hod.hod_update(bias_dict, hm_prec)
+            aux_M = self.hod.Mbins.reshape(len(self.hod.Mbins[0,:])*len(self.hod.Mbins[:,0]))
+            indices = np.unique(aux_M,return_index = True)[1]
+            aux_bispec_count_mm = self.count_matter_bispectrum(bias_dict, hod_dict, hm_prec)
+            aux_bispec_count_mm = aux_bispec_count_mm.reshape((len(aux_bispec_count_mm[:,0,0]), len(self.hod.Mbins[0,:])*len(self.hod.Mbins[:,0])))
+            log10_aux_M = np.log10(aux_M[indices])
+            count_matter_bispec = np.zeros((len(self.mass_func.k), len(log10csmf_mass_bins)))
+            for i_k in range(len(self.mass_func.k)):
+                count_matter_bispec[i_k, :] = np.exp(np.interp(log10csmf_mass_bins, log10_aux_M, np.log(aux_bispec_count_mm[i_k,indices])))
+            bias_dict = save_bias
+            self.hod.hod_update(bias_dict, hm_prec)
+        else:
+            aux_M = self.hod.Mbins.reshape(len(self.hod.Mbins[0,:])*len(self.hod.Mbins[:,0]))
+            indices = np.unique(aux_M,return_index = True)[1]
+            aux_bispec_count_mm = self.count_matter_bispectrum(bias_dict, hod_dict, hm_prec)
+            aux_bispec_count_mm = aux_bispec_count_mm.reshape((len(aux_bispec_count_mm[:,0,0]), len(self.hod.Mbins[0,:])*len(self.hod.Mbins[:,0])))
+            log10_aux_M = np.log10(aux_M[indices])
+            count_matter_bispec = np.zeros((len(self.mass_func.k), len(log10csmf_mass_bins)))
+            for i_k in range(len(self.mass_func.k)):
+                count_matter_bispec[i_k, :] = np.exp(np.interp(log10csmf_mass_bins, log10_aux_M, np.log(aux_bispec_count_mm[i_k,indices])))
         return count_matter_bispec

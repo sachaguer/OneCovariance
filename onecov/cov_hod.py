@@ -2,7 +2,7 @@ import numpy as np
 from scipy.integrate import simpson
 
 
-class HOD():
+class HOD:
     """
     This class provides different models for the halo occupation 
     distribution. All quantities are calculated at as a function halo
@@ -27,7 +27,7 @@ class HOD():
         [hm_prec['log10M_min'], hm_prec['log10M_max']]
     Mbins : array
         with unit M_sun/h
-        with shape (sample_dims, 300)
+        with shape (sample_dims, self.N_stellar_mass)
         logarithmically spaced masses in the range 
         [bias_dict['logmass_bins'][:-1], bias_dict['logmass_bins'][1:]],
         returns Mrange if no samples are specified
@@ -58,7 +58,7 @@ class HOD():
            (M_bins) as does, e.g., the function double_powerlaw
       2.3) your scattering relation can be called at L303 (and L290) 
            occ_prob = ..., make sure you provide an array with shape 
-           (sample bins, 300, M_bins) as does, e.g., the function 
+           (sample bins, self.N_stellar_mass, M_bins) as does, e.g., the function 
            lognormal
 
     """
@@ -66,6 +66,14 @@ class HOD():
     def __init__(self, 
                  bias_dict, 
                  hm_prec):
+        self.mass_bins_disagree = False
+        if bias_dict['has_csmf']:
+            if bias_dict['logmass_bins_upper'] is not None and bias_dict['logmass_bins_upper'] is not None:
+                if bias_dict['logmass_bins_lower'][0] > bias_dict['csmf_log10M_bins'][0] or bias_dict['logmass_bins_upper'][-1] < bias_dict['csmf_log10M_bins'][-1]:
+                    self.mass_bins_disagree = True
+            elif bias_dict['logmass_bins'][0] > bias_dict['csmf_log10M_bins'][0] or bias_dict['logmass_bins'][-1] < bias_dict['csmf_log10M_bins'][-1]:
+                self.mass_bins_disagree = True
+        self.N_stellar_mass = 300
         self.Mrange = np.logspace(
             hm_prec['log10M_min'], hm_prec['log10M_max'], hm_prec['M_bins'])
         self.Mbins = self.mass_bins(bias_dict, hm_prec)
@@ -95,23 +103,36 @@ class HOD():
             Returns the mass bins define in hm_prec.
 
         """
-        if bias_dict['logmass_bins'][0] == bias_dict['logmass_bins'][1]:
+        if bias_dict['logmass_bins'][0] == bias_dict['logmass_bins'][1] and (bias_dict['logmass_bins_upper'] is None and bias_dict['logmass_bins_lower'] is None):
             return self.Mrange.reshape((1,hm_prec['M_bins']))
         else:
             try:
-                bins =  np.logspace(
-                    bias_dict['logmass_bins'][:-1], 
-                    bias_dict['logmass_bins'][1:], 
-                    300, endpoint='False').T
+                if (bias_dict['logmass_bins_upper'] is not None and bias_dict['logmass_bins_lower'] is not None):
+                    bins =  np.logspace(
+                        bias_dict['logmass_bins_lower'], 
+                        bias_dict['logmass_bins_upper'], 
+                        self.N_stellar_mass).T
+                else:
+                    bins =  np.logspace(
+                        bias_dict['logmass_bins'][:-1], 
+                        bias_dict['logmass_bins'][1:], 
+                        self.N_stellar_mass).T
             # for Python 3.6 or earlier
             except ValueError:
                 bins = np.array([])
-                for mbin in range(len(bias_dict['logmass_bins'])-1):
-                    bins = np.concatenate((bins, np.logspace(
-                                bias_dict['logmass_bins'][mbin], 
-                                bias_dict['logmass_bins'][mbin+1], 
-                                300, endpoint='False')))
-                bins = bins.reshape(3,300)
+                if (bias_dict['logmass_bins_upper'] is not None and bias_dict['logmass_bins_lower'] is not None):
+                    for mbin in range(len(bias_dict['logmass_bins'])-1):
+                        bins = np.concatenate((bins, np.logspace(
+                                    bias_dict['logmass_bins_lower'][mbin], 
+                                    bias_dict['logmass_bins_upper'][mbin], 
+                                    self.N_stellar_mass)))
+                else:
+                    for mbin in range(len(bias_dict['logmass_bins'])-1):
+                        bins = np.concatenate((bins, np.logspace(
+                                    bias_dict['logmass_bins'][mbin], 
+                                    bias_dict['logmass_bins'][mbin+1], 
+                                    self.N_stellar_mass)))
+                bins = bins.reshape(len(bias_dict['logmass_bins'])-1,self.N_stellar_mass)
 
         return bins
 
@@ -203,7 +224,7 @@ class HOD():
         Returns
         -------
         logn : array
-            with shape (sample_bins, 300, M_bins)
+            with shape (sample_bins, self.N_stellar_mass, M_bins)
         """
 
 
@@ -238,7 +259,7 @@ class HOD():
         Returns 
         -------
         schech : array
-            with shape (sample_bins, 300, M_bins)
+            with shape (sample_bins, self.N_stellar_mass, M_bins)
         """
         MbinsMobs = self.Mbins[:, :, None]/Mobs[None, None, :]
         phi_s = 10**(-hod_dict['modsch_b_'+pop][0] + hod_dict['modsch_b_'+pop][1]   *np.log10(self.Mrange/10**hod_dict['modsch_logMref_'+pop]))
@@ -289,7 +310,7 @@ class HOD():
         occ_num : array
             with shape (sample_bins, M_bins)
         occ_prob : array
-            with shape (sample_bins, 300, M_bins) [Note1]
+            with shape (sample_bins, self.N_stellar_mass, M_bins) [Note1]
             
         [Note1] If the occupation number is given as a look-up table,
         then occ_prob will be NoneType
@@ -375,7 +396,7 @@ class HOD():
         occ_num : array
             with shape (sample_bins, M_bins)
         occ_prob : array
-            with shape (sample_bins, 300, M_bins)
+            with shape (sample_bins, self.N_stellar_mass, M_bins)
         """
 
         occ_num_cen, occ_prob_cen = \

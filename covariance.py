@@ -1,20 +1,21 @@
-from onecov.cov_input import Input, FileInput
-from onecov.cov_ell_space import CovELLSpace
-from onecov.cov_theta_space import CovTHETASpace
-from onecov.cov_output import Output
-from onecov.cov_cosebis import CovCOSEBI
-from onecov.cov_bandpowers import CovBandPowers
-from onecov.cov_arbitrary_summary import CovARBsummary
-import sys
 import os
 import platform
+import sys
+
+from onecov.cov_arbitrary_summary import CovARBsummary
+from onecov.cov_bandpowers import CovBandPowers
+from onecov.cov_cosebis import CovCOSEBI
+from onecov.cov_ell_space import CovELLSpace
+from onecov.cov_input import FileInput, Input
+from onecov.cov_output import Output
+from onecov.cov_theta_space import CovTHETASpace
+
 if len(platform.mac_ver()[0]) > 0 and (platform.processor() == 'arm' or int(platform.mac_ver()[0][:(platform.mac_ver()[0]).find(".")]) > 13):
     os.environ['KMP_DUPLICATE_LIB_OK']='True'
 print("READING INPUT")
 print("#############")
 
 inp = Input()
-
 
 if len(sys.argv) > 1:
     config = str(sys.argv[1])
@@ -29,7 +30,6 @@ else:
 safe_gauss = covterms['gauss']
 covterms['gauss'] = True
 
-
 if not observables['arbitrary_summary']['do_arbitrary_summary']:
     if ((observables['observables']['est_shear'] == 'C_ell' and observables['observables']['cosmic_shear']) or (observables['observables']['est_ggl'] == 'C_ell' and observables['observables']['ggl']) or observables['observables']['est_clust'] == 'C_ell' and observables['observables']['clustering']):
         print("CALCULATING COVARIANCE FOR ANGULAR POWER SPECTRA")
@@ -40,6 +40,12 @@ if not observables['arbitrary_summary']['do_arbitrary_summary']:
         
         covariance_in_ell_space = covell.calc_covELL(
             observables, output, bias,  hod, survey_params, prec, read_in_tables)
+        
+
+        if covell.ellrange_clustering is None:
+            covell.ellrange_clustering = covell.ellrange
+        if covell.ellrange_lensing is None:
+            covell.ellrange_lensing = covell.ellrange
         observables['observables']['is_cell'] = True
         out = Output(output, covell.ellrange_clustering, covell.ellrange_lensing)
         covterms['gauss'] = safe_gauss

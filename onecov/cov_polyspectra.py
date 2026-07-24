@@ -1,13 +1,14 @@
-import warnings
 import itertools
-import numpy as np
-from scipy.integrate import quad, IntegrationWarning, simpson
-from scipy.interpolate import UnivariateSpline, RectBivariateSpline
-from scipy.interpolate import RegularGridInterpolator
-
 import multiprocessing as mp
-import time
+import warnings
 
+import numpy as np
+from scipy.integrate import IntegrationWarning, quad, simpson
+from scipy.interpolate import (
+    RectBivariateSpline,
+    RegularGridInterpolator,
+    UnivariateSpline,
+)
 
 try:
     from onecov.cov_halo_model import HaloModel
@@ -595,23 +596,22 @@ class PolySpectra(HaloModel):
                 if self.unbiased_clustering and hm_prec['transfer_model'] != 'CAMB':
                     Pgm = self.mass_func.nonlinear_power[:, None] \
                         * np.ones(self.sample_dim)
+                elif self.unbiased_clustering:
+                    Pgm = self.__P_xy_1h(
+                        bias_dict, hod_dict, hm_prec, 'm', 'm') \
+                        * self.small_k_damping(
+                            hm_prec['small_k_damping'],
+                            self.mass_func.k)[:, None] \
+                        + self.mass_func.power[:, None]
                 else:
-                    if self.unbiased_clustering:
-                        Pgm = self.__P_xy_1h(
-                            bias_dict, hod_dict, hm_prec, 'm', 'm') \
-                            * self.small_k_damping(
-                                hm_prec['small_k_damping'],
-                                self.mass_func.k)[:, None] \
-                            + self.mass_func.power[:, None]
-                    else:
-                        Pgm = \
-                            np.diagonal(self.__P_xy_1h(bias_dict, hod_dict, hm_prec, 'm', 'sat'), axis1 = 1, axis2 = 2) \
-                            + np.diagonal(self.__P_xy_1h(bias_dict, hod_dict, hm_prec, 'm', 'cen'), axis1 = 1, axis2 = 2) \
-                            * self.small_k_damping(
-                                hm_prec['small_k_damping'],
-                                self.mass_func.k)[:, None] \
-                            + self.mass_func.power[:, None] \
-                            * self.effective_bias[None, :] * bias_dict['bias_2h']
+                    Pgm = \
+                        np.diagonal(self.__P_xy_1h(bias_dict, hod_dict, hm_prec, 'm', 'sat'), axis1 = 1, axis2 = 2) \
+                        + np.diagonal(self.__P_xy_1h(bias_dict, hod_dict, hm_prec, 'm', 'cen'), axis1 = 1, axis2 = 2) \
+                        * self.small_k_damping(
+                            hm_prec['small_k_damping'],
+                            self.mass_func.k)[:, None] \
+                        + self.mass_func.power[:, None] \
+                        * self.effective_bias[None, :] * bias_dict['bias_2h']
             else:
                 Pgm = np.zeros((len(self.mass_func.k), self.sample_dim))
                 for mbin in range(self.sample_dim):
@@ -672,28 +672,27 @@ class PolySpectra(HaloModel):
             if self.Pxy_tab['gg'] is None:
                 if self.unbiased_clustering and self.sample_dim < 2 and hm_prec['transfer_model'] != 'CAMB':
                     Pgg = self.mass_func.nonlinear_power[:, None, None]
+                elif self.unbiased_clustering:
+                    Pgg = (self.__P_xy_1h(
+                        bias_dict, hod_dict, hm_prec, 'm', 'm') \
+                        * self.small_k_damping(
+                            hm_prec['small_k_damping'],
+                            self.mass_func.k)[:, None] \
+                        + self.mass_func.power[:, None])[:,:,None]
                 else:
-                    if self.unbiased_clustering:
-                        Pgg = (self.__P_xy_1h(
-                            bias_dict, hod_dict, hm_prec, 'm', 'm') \
-                            * self.small_k_damping(
-                                hm_prec['small_k_damping'],
-                                self.mass_func.k)[:, None] \
-                            + self.mass_func.power[:, None])[:,:,None]
-                    else:
-                        Pgg = (2 *
-                            self.__P_xy_1h(bias_dict, hod_dict,
-                                            hm_prec, 'sat', 'cen')
-                            + self.__P_xy_1h(bias_dict, hod_dict,
-                                                hm_prec, 'sat', 'sat')
-                            #+ self.__P_xy_1h(bias_dict, hod_dict,
-                            #                hm_prec, 'cen', 'cen')
-                            ) \
-                            * self.small_k_damping(
-                                hm_prec['small_k_damping'],
-                                self.mass_func.k)[:, None, None] \
-                            + self.mass_func.power[:, None, None] \
-                            * (bias_dict['bias_2h'])**2.0* (self.effective_bias[None,:,None])*( self.effective_bias[None,None,:])
+                    Pgg = (2 *
+                        self.__P_xy_1h(bias_dict, hod_dict,
+                                        hm_prec, 'sat', 'cen')
+                        + self.__P_xy_1h(bias_dict, hod_dict,
+                                            hm_prec, 'sat', 'sat')
+                        #+ self.__P_xy_1h(bias_dict, hod_dict,
+                        #                hm_prec, 'cen', 'cen')
+                        ) \
+                        * self.small_k_damping(
+                            hm_prec['small_k_damping'],
+                            self.mass_func.k)[:, None, None] \
+                        + self.mass_func.power[:, None, None] \
+                        * (bias_dict['bias_2h'])**2.0* (self.effective_bias[None,:,None])*( self.effective_bias[None,None,:])
 
             else:
                 Pgg = np.zeros((len(self.mass_func.k), self.sample_dim))
@@ -1112,71 +1111,56 @@ class PolySpectra(HaloModel):
                                  tri_bool)
 
         k_dim = len(self.mass_func.k)
+        b_i = self.effective_bias[None, None, :, None]
+        b_j = self.effective_bias[None, None, None, :]
+        b_i2 = b_i ** 2
+        tri234 = trispectra234h[:, :, None, None]
 
         if self.gg and tri_gggg:
-            if len(np.where(trispec1h_gggg + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2*self.effective_bias[None,None,None, :]**2 <0)[0]) == 0:
-                logtrispec_gggg_ktri = \
-                    np.log10(trispec1h_gggg + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2*self.effective_bias[None,None,None, :]**2)
-            else:
-                logtrispec_gggg_ktri = trispec1h_gggg + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2*self.effective_bias[None,None,None, :]**2
+            combined = trispec1h_gggg + tri234 * b_i2 * b_j**2
+            logtrispec_gggg_ktri = combined if np.any(combined < 0) else np.log10(combined)
             trispec_gggg = np.zeros((k_dim, k_dim,
                                      self.sample_dim, self.sample_dim))
         else:
             logtrispec_gggg_ktri = None
 
         if self.gg and self.gm and self.cross_terms and tri_gggm:
-            if len(np.where(trispec1h_gggm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2*self.effective_bias[None,None,None, :] <0)[0]) == 0:
-                logtrispec_gggm_ktri = \
-                    np.log10(trispec1h_gggm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2*self.effective_bias[None,None,None, :])
-            else:
-                logtrispec_gggm_ktri = \
-                    (trispec1h_gggm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2*self.effective_bias[None,None,None, :])
+            combined = trispec1h_gggm + tri234 * b_i2 * b_j
+            logtrispec_gggm_ktri = combined if np.any(combined < 0) else np.log10(combined)
             trispec_gggm = np.zeros((k_dim, k_dim,
                                      self.sample_dim, self.sample_dim))
         else:
             logtrispec_gggm_ktri = None
 
         if self.gg and self.mm and self.cross_terms and tri_ggmm:
-            if len(np.where(trispec1h_ggmm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2 < 0)[0]) == 0:
-                logtrispec_ggmm_ktri = \
-                    np.log10(trispec1h_ggmm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2)
-            else:
-                logtrispec_ggmm_ktri = trispec1h_ggmm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]**2
+            combined = trispec1h_ggmm + tri234 * b_i2
+            logtrispec_ggmm_ktri = combined if np.any(combined < 0) else np.log10(combined)
             trispec_ggmm = np.zeros((k_dim, k_dim,
                                      self.sample_dim, self.sample_dim))
         else:
             logtrispec_ggmm_ktri = None
 
         if self.gm and tri_gmgm:
-            if len(np.where(trispec1h_gmgm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]*self.effective_bias[None,None,None, :] < 0)[0]) == 0:
-                logtrispec_gmgm_ktri = \
-                    np.log10(trispec1h_gmgm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]*self.effective_bias[None,None,None, :])
-            else:
-                logtrispec_gmgm_ktri = trispec1h_gmgm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,:,None]*self.effective_bias[None,None,None, :]
+            combined = trispec1h_gmgm + tri234 * b_i * b_j
+            logtrispec_gmgm_ktri = combined if np.any(combined < 0) else np.log10(combined)
             trispec_gmgm = np.zeros((k_dim, k_dim,
                                      self.sample_dim, self.sample_dim))
         else:
             logtrispec_gmgm_ktri = None
 
         if self.mm and self.gm and self.cross_terms and tri_mmgm:
-            if len(np.where(trispec1h_mmgm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,None,:] < 0)[0]) == 0:
-                logtrispec_mmgm_ktri = \
-                    np.log10(trispec1h_mmgm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,None,:])
-            else:
-                logtrispec_mmgm_ktri = trispec1h_mmgm + trispectra234h[:, :, None, None]*self.effective_bias[None,None,None,:]
+            combined = trispec1h_mmgm + tri234 * b_j
+            logtrispec_mmgm_ktri = combined if np.any(combined < 0) else np.log10(combined)
             trispec_mmgm = np.zeros((k_dim, k_dim,
                                      self.sample_dim, self.sample_dim))
         else:
             logtrispec_mmgm_ktri = None
+
         if self.mm and tri_mmmm:
-            if len(np.where(trispec1h_mmmm + trispectra234h[:, :, None, None] <0)[0]) == 0:
-                logtrispec_mmmm_ktri = \
-                    np.log10(trispec1h_mmmm + trispectra234h[:, :, None, None])
-            else:
-                logtrispec_mmmm_ktri = trispec1h_mmmm + trispectra234h[:, :, None, None]
+            combined = trispec1h_mmmm + tri234
+            logtrispec_mmmm_ktri = combined if np.any(combined < 0) else np.log10(combined)
             trispec_mmmm = np.zeros((k_dim, k_dim,
                                      self.sample_dim, self.sample_dim))
-            
         else:
             logtrispec_mmmm_ktri = None
 
@@ -1258,58 +1242,55 @@ class PolySpectra(HaloModel):
         
         '''
         
-        x_values = np.zeros((2,len(self.mass_func.k)*len(self.mass_func.k)))
-        flat_idx = 0
-        for i_k in range(len(self.mass_func.k)):
-            for j_k in range(len(self.mass_func.k)):
-                x_values[0,flat_idx] = np.log10(self.mass_func.k[i_k])
-                x_values[1,flat_idx] = np.log10(self.mass_func.k[j_k])
-                flat_idx +=1
+        logk = np.log10(self.mass_func.k)
+        kk_i, kk_j = np.meshgrid(logk, logk, indexing='ij')
+        x_values = np.stack([kk_i.ravel(), kk_j.ravel()])
+        xi = x_values.T 
         np.seterr(over='ignore')
         for nbin in range(self.sample_dim):
             for mbin in range(nbin, self.sample_dim):
                 if self.gg and tri_gggg:
                     tri_interpolator = RegularGridInterpolator((self.logks_tri, self.logks_tri),
-                                                    logtrispec_gggg_ktri,bounds_error= False, fill_value = None)
-                    if np.isinf(10**np.max(logtrispec_gggg_ktri)):
-                        trispec_gggg[:,:,nbin,mbin] = tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                                                    logtrispec_gggg_ktri[:,:,nbin,mbin],bounds_error= False, fill_value = None)
+                    if np.max(logtrispec_gggg_ktri[:,:,nbin,mbin]) > 308.255:
+                        trispec_gggg[:,:,nbin,mbin] = tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                     else:
-                        trispec_gggg[:,:,nbin,mbin] = 10**tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                        trispec_gggg[:,:,nbin,mbin] = 10**tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                 if self.gg and self.gm and self.cross_terms:
                     tri_interpolator = RegularGridInterpolator((self.logks_tri, self.logks_tri),
-                                                    logtrispec_gggm_ktri,bounds_error= False, fill_value = None)
-                    if np.isinf(10**np.max(logtrispec_gggm_ktri)):
-                        trispec_gggm[:,:,nbin,mbin] = tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
-                    else: 
-                        trispec_gggm[:,:,nbin,mbin] = 10**tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                                                    logtrispec_gggm_ktri[:,:,nbin,mbin],bounds_error= False, fill_value = None)
+                    if np.max(logtrispec_gggm_ktri[:,:,nbin,mbin]) > 308.255:
+                        trispec_gggm[:,:,nbin,mbin] = tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                    else:
+                        trispec_gggm[:,:,nbin,mbin] = 10**tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                 if self.gg and self.mm and self.cross_terms:
                     tri_interpolator = RegularGridInterpolator((self.logks_tri, self.logks_tri),
-                                                    logtrispec_ggmm_ktri,bounds_error= False, fill_value = None)
-                    if np.isinf(10**np.max(logtrispec_ggmm_ktri)):
-                        trispec_ggmm[:,:,nbin,mbin] = tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                                                    logtrispec_ggmm_ktri[:,:,nbin,mbin],bounds_error= False, fill_value = None)
+                    if np.max(logtrispec_ggmm_ktri[:,:,nbin,mbin]) > 308.255:
+                        trispec_ggmm[:,:,nbin,mbin] = tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                     else:
-                        trispec_ggmm[:,:,nbin,mbin] = 10**tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                        trispec_ggmm[:,:,nbin,mbin] = 10**tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                 if self.gm:
                     tri_interpolator = RegularGridInterpolator((self.logks_tri, self.logks_tri),
-                                                    logtrispec_gmgm_ktri,bounds_error= False, fill_value = None)
-                    if np.isinf(10**np.max(logtrispec_gmgm_ktri)):
-                        trispec_gmgm[:,:,nbin,mbin] = tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                                                    logtrispec_gmgm_ktri[:,:,nbin,mbin],bounds_error= False, fill_value = None)
+                    if np.max(logtrispec_gmgm_ktri[:,:,nbin,mbin]) > 308.255:
+                        trispec_gmgm[:,:,nbin,mbin] = tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                     else:
-                        trispec_gmgm[:,:,nbin,mbin] = 10**tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                        trispec_gmgm[:,:,nbin,mbin] = 10**tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                 if self.gm and self.mm and self.cross_terms:
                     tri_interpolator = RegularGridInterpolator((self.logks_tri, self.logks_tri),
-                                                    logtrispec_mmgm_ktri,bounds_error= False, fill_value = None)
-                    if np.isinf(10**np.max(logtrispec_mmgm_ktri)):
-                        trispec_mmgm[:,:,nbin,mbin] = tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                                                    logtrispec_mmgm_ktri[:,:,nbin,mbin],bounds_error= False, fill_value = None)
+                    if np.max(logtrispec_mmgm_ktri[:,:,nbin,mbin]) > 308.255:
+                        trispec_mmgm[:,:,nbin,mbin] = tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                     else:
-                        trispec_mmgm[:,:,nbin,mbin] = 10**tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                        trispec_mmgm[:,:,nbin,mbin] = 10**tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                 if self.mm:
                     tri_interpolator = RegularGridInterpolator((self.logks_tri, self.logks_tri),
-                                                    logtrispec_mmmm_ktri,bounds_error= False, fill_value = None)
-                    if np.isinf(10**np.max(logtrispec_mmmm_ktri)):
-                        trispec_mmmm[:,:,nbin,mbin] = tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                                                    logtrispec_mmmm_ktri[:,:,nbin,mbin],bounds_error= False, fill_value = None)
+                    if np.max(logtrispec_mmmm_ktri[:,:,nbin,mbin]) > 308.255:
+                        trispec_mmmm[:,:,nbin,mbin] = tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
                     else:
-                        trispec_mmmm[:,:,nbin,mbin] = 10**tri_interpolator((x_values[0,:],x_values[1,:])).reshape((len(self.mass_func.k),len(self.mass_func.k)))
+                        trispec_mmmm[:,:,nbin,mbin] = 10**tri_interpolator(xi).reshape((len(self.mass_func.k),len(self.mass_func.k)))
         np.seterr(over='warn')
         if self.gg:
             trispec_gggg[np.where(trispec_gggg < self.tri_lowlim)] = \
@@ -1511,22 +1492,22 @@ class PolySpectra(HaloModel):
  
         if self.gm and tri_gmgm:
             integrand = np.sqrt(
-                (2 * hurly_c[None, :, None, :, :] * hurly_s[None, :, None, :, :]
-                    + hurly_s[None, :, None, :, :]**2)
-                * hurly_m[None, :, None, :, :]**2
+                (2 * hurly_c[:, None, :, None, :] * hurly_s[:, None, :, None, :]
+                    + hurly_s[:, None, :, None, :]**2)
+                * hurly_m[:, None, :, None, :]**2
                 * (2 * hurly_c[None, :, None, :, :] * hurly_s[None, :, None, :, :]
                     + hurly_s[None, :, None, :, :]**2)
                 * hurly_m[None, :, None, :, :]**2) \
-                * self.mass_func.dndm[None, None, None, None, :] 
+                * self.mass_func.dndm[None, None, None, None, :]
             trispec1h_gmgm = simpson(integrand, x = self.mass_func.m)
-       
+
         if self.mm and self.gm and self.cross_terms and tri_mmgm:
             integrand = np.sqrt(
-                hurly_m[None, :, None, :, :]**4
+                hurly_m[:, None, :, None, :]**4
                 * (2 * hurly_c[None, :, None, :, :] * hurly_s[None, :, None, :, :]
                     + hurly_s[None, :, None, :, :]**2)
                 * hurly_m[None, :, None, :, :]**2) \
-                * self.mass_func.dndm[None, None, None, None, :] 
+                * self.mass_func.dndm[None, None, None, None, :]
             trispec1h_mmgm = simpson(integrand, x = self.mass_func.m)
 
         if self.mm and tri_mmmm:
@@ -1910,7 +1891,7 @@ class PolySpectra(HaloModel):
         integral_mmm = \
             10**halomod_integral_mmm_spline(self.logks_tri, self.logks_tri)
 
-        phis = np.linspace(0, np.pi/2, 300)
+        phis = np.linspace(0, np.pi/2, 3000)
         kidxlist = \
             list(itertools.combinations_with_replacement(np.arange(k_dim), 2))
 

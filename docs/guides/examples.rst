@@ -469,6 +469,128 @@ that people only want to consider particular bin combinations, this can be done 
 If they are not set, the code falls back to the default for the respective tracer. So for example if you want to only consider the auto-correlations for clustering and 
 you specified 2 redshift files for clustering you might do this by writing:
 
-``combinations_clustering = 0-0,1-1```
+``combinations_clustering = 0-0,1-1``
 
 The code will still calculate all combinations. However, it will produce an additional matrix file with ``your_matrix_file_name_reduced.mat`` with only the specified tomographic bins.
+
+6x2pt analysis for :math:`C_\ell` 
+---------------------------------
+The file ``config_6x2pt_pure_Cell.ini`` in the directory ``config_files`` illustrates how to caclulate the covariance matrix in a :math:`6\times 2` analysis. 
+The main feature the OneCovariance is allows to have different binning schemes (and survey areas) for the photometric and spectroscopic clustering samples respectively.
+We can activate this mode by navigating to ``covELLspace settings`` in the configuration file and set the variable:
+
+``n_spec = 2``
+
+This will tell the code that the first two bins which are passed in the ``redshift section`` are treated as spectroscopic and the remaining bins as photometric.
+The corresponding bins in multipoles can be specified as follows:
+
+::
+
+   ell_min_lensing = 30
+   ell_max_lensing = 500
+   ell_bins_lensing = 15
+   ell_type_lensing = log
+
+   ell_spec_min = 10
+   ell_spec_max = 500
+   ell_spec_bins = 6
+   ell_spec_type = log
+
+   ell_photo_min = 10
+   ell_photo_max = 700
+   ell_photo_bins = 8
+   ell_photo_type = log
+
+   ell_spec_photo_min = 100
+   ell_spec_photo_max = 500
+   ell_spec_photo_bins = 12
+   ell_spec_photo_type = lin
+
+
+which should be pretty self-explanatory. The values ``ell_min`` and ``ell_max`` etc. are used for interpolating the :math:`C_\ell` covariance. The code will rebin
+it accordingly in the desired bins. The variables ``ell_spec_photo_min`` etc. corresponds to the definition of the :math:`\ell` binning if a spectroscopic and a photometric
+sample are involved in an observable, e.g. photometric cross spectroscopic clustering but also for GGL with a spectroscopic sample as lenses.
+Furthermore, since we have now effectively three clustering measurements and to GGL ones, we have to specify the respective areas accordingly:
+
+::
+
+   survey_area_clust_in_deg2 = 1100,777,777
+   survey_area_ggl_in_deg2 = 777,777
+
+The expected order here is the following: for ``survey_area_clust_in_deg2`` it is spec :math:`\times` spec, spec :math:`\times` phot and phot :math:`\times` phot, while GGL expects
+spec :math:`\times` sources and phot :math:`\times` sources. The same order translates to the mask files if you want to pass some.
+Lastly, by default the spectroscopic cross spectroscopic clustering signal will only put out the auto-correlations. However, if redshift space distortions are taken into account in the
+corresponding redshift distributions, there might be some overlap and adjacent bins can contain some information. This can be enabled by settings 
+
+::
+
+   adjacent_clustering_bins = True
+
+Which will then use also the adjacent bins for spectroscopic cross spectroscopic clustering. Running the code in the :math:`6\times 2` mode will only produce the matrix output. The corresponding
+correlation coefficient looks as follows:
+
+.. image:: 6x2ptcell.png
+   :width: 790
+
+
+We have three unique combinations of spectroscopic cross spectroscopic bins because we also took the adjacent bin into account. They are binned into six :math:`\ell` bins. 
+The spectroscopic cross photometric clustering has four unique bin combinations from the two spectroscopic and two photometric bins and with 12 :math:`\ell` bins each.
+Photometric cross photometric clustering has three unique bin combinations and 8 :math:`\ell` bins. Spectroscopic GGL has 10 bin combinations with 12 :math:`\ell` bins each and lastly,
+Photometric GGL has also 10 bin combinations with 8 :math:`\ell` bins.
+
+3x2pt analysis and stellar mass function 
+----------------------------------------
+The file ``config_3x2pt_pure_Cell_SMF.ini`` in the directory ``config_files`` illustrates how to caclulate the covariance matrix in a :math:`3\times 2 + 1pt` analysis, where the 1pt refers the stellar mass function (SMF).
+To do so, you first need to set
+
+::
+
+   [observables]
+   cstellar_mf = True
+
+You can then include the settings in the following section
+
+::
+
+   [csmf settings]
+   csmf_log10Mmin = 7
+   csmf_log10Mmax = 12.5
+   csmf_N_log10M_bin = 30
+   #csmf_log10M_bins = 
+   #csmf_log10M_bins_upper = 10.1, 10.1, 10.1, 10.1, 10.1
+   #csmf_log10M_bins_lower = 9.1, 9.3, 9.5, 9.7, 9.9
+   csmf_directory = ./input/conditional_smf/
+   V_max_file = V_max.asc
+   f_tomo_file = f_tomo.asc
+   csmf_diagonal = False
+
+In this case we use 30 bins from :math:`10^7\,h^{-1}M_\odot` to :math:`10^{12.5}\,h^{-1}M_\odot`, logarithmically spaced. Alternatively, you can use ``csmf_log10M_bins`` to define the boundaries of the bins
+if they are non-overlapping, or directly provide the upper and lower limits via ``csmf_log10M_bins_upper`` and ``csmf_log10M_bins_lower`` respectively. Since the stellar mass function uses the
+:math:`V_\mathrm{max}` estimator, you need to specify a file with the corresponding number of entries for :math:`V_\mathrm{max}` which is usually directly estimated from the data. The file ``f_tomo.asc`` should
+contain the fraction of galaxies in each tomographic bin used for the SMF, in our example we only have a single bin. Lastly, ``csmf_diagonal`` specifies whether all combinations of tomographic bins (for the SMF) 
+and the stellar mass bins should be calculated. If ``csmf_diagonal = True``, the code only calculates the diagonals, this of course only works if the number of stellar mass bins equals the number of
+tomographic bins for the SMF. The last question is, how do I specify the latter? You go to the ``redshift section`` and set
+
+::
+
+   zcsmf_file = bright_DR4_NS_fluxscale_corrected_nz_LB1.txt
+   value_loc_in_csmfbin = left
+
+This works in exactly the same way as all other tomographic bins. If you use the SMF, you probably want to use it to constrain the parameters of the HOD, it will therefore be wise to 
+set the mass-range used for the galaxy clustering measurement to the same mass-range over which the SMF is estiamted, therefore, we set in the ``bias section``
+
+::
+
+   log10mass_bins = 7, 12.5
+
+Alternative, you can, similarly to the bins in which the stellar mass function is estimated, set the upper/lower limits here explictely via ``log10mass_bins_upper`` and ``log10mass_bins_lower`` respectively.
+In that case, you should remove the ``log10mass_bins`` variable from the config file as it is used otherwise. Yo can also ask the code to only consider those tomographic bins for the clustering measurements which
+directly correspond to the mass bins for the clustering measurement by setting ``csmf_diagonal_lenses`` to ``True``. This will therefore only consider the auto-correlations of the tomographic bins used for clustering
+and the corresponding stellar mass bins. In this case, the number of tomographic bins passed in the ``redshift section`` must match the number of stellar mass bins used for the clustering measurement.
+Running this config file will calculate the previously calcualted :math:`3\times 2` covariance, the SMF covariance and their cross-correlations in the following order:
+
+.. image:: corr_smf.png
+   :width: 790
+
+It should be noted, that the SMF is rescaled with the stellar mass and :math:`\ln(10)`, often the masses are expressed in units of :math:`h^{-2}M_\odot`, note that the 
+OneCovariance does not do this but uses the standard :math:`h^{-2}M_\odot`, so remember to convert on input and output.
