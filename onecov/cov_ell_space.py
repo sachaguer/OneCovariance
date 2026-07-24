@@ -308,11 +308,6 @@ class CovELLSpace(PolySpectra):
         # Set up CAMB parameters for matter power spectrum
         self.camb_pars.set_matter_power(kmax=self.mass_func.k[-1], redshifts=[0])
         results = camb.get_results(self.camb_pars_new)
-<<<<<<< HEAD
-        self.camb_pars_new.InitPower.set_params(ns=cosmo_dict['ns'],
-                                As = 1.8e-9/results.get_sigma8()[0]**2*cosmo_dict['sigma8']**2)
-        self.num_cores_save = self.num_cores       
-=======
         # Update initial power spectrum parameters
         self.camb_pars_new.InitPower.set_params(
             ns=cosmo_dict['ns'],
@@ -320,7 +315,6 @@ class CovELLSpace(PolySpectra):
         )
         self.num_cores_save = self.num_cores
         # Calculate survey area
->>>>>>> upstream/main
         self.calc_survey_area(survey_params_dict)
         # Compute Cells (angular power spectra)
         self.get_Cells(
@@ -2833,6 +2827,9 @@ class CovELLSpace(PolySpectra):
                             unique_34):
         if not isinstance(cov, np.ndarray):
             return 0
+        print(area_12)
+        print(area_34)
+        print(max(area_12,area_34))
         fsky = max(area_12,area_34)/(4.0*np.pi * self.deg2torad2)
         binned_covariance = np.zeros((len(ellrange_12_ul) - 1, len(ellrange_34_ul) - 1, len(cov[0,0,:,0,0,0,0,0]), len(cov[0,0,0,:,0,0,0,0]), len(cov[0,0,0,0,:,0,0,0]), len(cov[0,0,0,0,0,:,0,0]), len(cov[0,0,0,0,0,0,:,0]), len(cov[0,0,0,0,0,0,0,:])))
         for i_ell in range(len(ellrange_12_ul) - 1):
@@ -2953,7 +2950,7 @@ class CovELLSpace(PolySpectra):
             if field1_spec:
                 area_12 = survey_params_dict['survey_area_ggl'][0]
         if probe12 == "lens":
-            area_12 = survey_params_dict['survey_area_lens']
+            area_12 = survey_params_dict['survey_area_lens'][0]
 
         if probe34 == "clust":
             if field3_spec and field4_spec:
@@ -2967,7 +2964,7 @@ class CovELLSpace(PolySpectra):
             if field3_spec:
                 area_34 = survey_params_dict['survey_area_ggl'][0]
         if probe34 == "lens":
-            area_34 = survey_params_dict['survey_area_lens']
+            area_34 = survey_params_dict['survey_area_lens'][0]
 
         if probe12 == "clust" and probe34 == "clust":
             lo_limit_1 = covELLspacesettings['n_spec']
@@ -3289,21 +3286,21 @@ class CovELLSpace(PolySpectra):
                 gaussELLggmm_sva = self.__bin_cov_ell_gauss(self.ellrange_clustering_ul,
                                                             self.ellrange_lensing_ul,
                                                             survey_params_dict['survey_area_clust'],
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             gaussELLggmm_sva,
                                                             True,
                                                             True)
                 gaussELLggmm_mix = self.__bin_cov_ell_gauss(self.ellrange_clustering_ul,
                                                             self.ellrange_lensing_ul,
                                                             survey_params_dict['survey_area_clust'],
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             gaussELLggmm_mix,
                                                             True,
                                                             True)
                 gaussELLggmm_sn = self.__bin_cov_ell_gauss(self.ellrange_clustering_ul,
                                                             self.ellrange_lensing_ul,
                                                             survey_params_dict['survey_area_clust'],
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             gaussELLggmm_sn,
                                                             True,
                                                             True)
@@ -3332,21 +3329,21 @@ class CovELLSpace(PolySpectra):
             if self.gm and self.mm and self.ellrange_clustering_ul is not None and self.ellrange_lensing_ul is not None:                  
                 gaussELLmmgm_sva = self.__bin_cov_ell_gauss(self.ellrange_lensing_ul,
                                                             self.ellrange_clustering_ul,
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             survey_params_dict['survey_area_ggl'],
                                                             gaussELLmmgm_sva,
                                                             True,
                                                             False)
                 gaussELLmmgm_mix = self.__bin_cov_ell_gauss(self.ellrange_lensing_ul,
                                                             self.ellrange_clustering_ul,
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             survey_params_dict['survey_area_ggl'],
                                                             gaussELLmmgm_mix,
                                                             True,
                                                             False)
                 gaussELLmmgm_sn = self.__bin_cov_ell_gauss(self.ellrange_lensing_ul,
                                                             self.ellrange_clustering_ul,
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             survey_params_dict['survey_area_ggl'],
                                                             gaussELLmmgm_sn,
                                                             True,
@@ -3356,22 +3353,22 @@ class CovELLSpace(PolySpectra):
             
                 gaussELLmmmm_sva = self.__bin_cov_ell_gauss(self.ellrange_lensing_ul,
                                                             self.ellrange_lensing_ul,
-                                                            survey_params_dict['survey_area_lens'],
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             gaussELLmmmm_sva,
                                                             True,
                                                             True)
                 gaussELLmmmm_mix = self.__bin_cov_ell_gauss(self.ellrange_lensing_ul,
                                                             self.ellrange_lensing_ul,
-                                                            survey_params_dict['survey_area_lens'],
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             gaussELLmmmm_mix,
                                                             True,
                                                             True)
                 gaussELLmmmm_sn = self.__bin_cov_ell_gauss(self.ellrange_lensing_ul,
                                                             self.ellrange_lensing_ul,
-                                                            survey_params_dict['survey_area_lens'],
-                                                            survey_params_dict['survey_area_lens'],
+                                                            survey_params_dict['survey_area_lens'][0],
+                                                            survey_params_dict['survey_area_lens'][0],
                                                             gaussELLmmmm_sn,
                                                             True,
                                                             True)
