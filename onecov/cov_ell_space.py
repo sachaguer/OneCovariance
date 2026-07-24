@@ -248,7 +248,7 @@ class CovELLSpace(PolySpectra):
         self.camb_pars.set_matter_power(kmax=self.mass_func.k[-1], redshifts = [0])
         results = camb.get_results(self.camb_pars_new)
         self.camb_pars_new.InitPower.set_params(ns=cosmo_dict['ns'],
-                                As = 1.8e-9/results.get_sigma8()**2*cosmo_dict['sigma8']**2)
+                                As = 1.8e-9/results.get_sigma8()[0]**2*cosmo_dict['sigma8']**2)
         self.num_cores_save = self.num_cores       
         self.calc_survey_area(survey_params_dict)
         self.get_Cells(obs_dict, output_dict,
@@ -378,6 +378,12 @@ class CovELLSpace(PolySpectra):
                         covELLspacesettings['ell_min_lensing'],
                         covELLspacesettings['ell_max_lensing'],
                         covELLspacesettings['ell_bins_lensing'] + 1).astype(int)
+                    self.ellrange_lensing = .5 * (self.ellrange_lensing_ul[1:] + self.ellrange_lensing_ul[:-1])
+                elif covELLspacesettings['ell_type_lensing'] == 'squareroot':
+                    start = np.power(covELLspacesettings['ell_min_lensing'], 1/2)
+                    end = np.power(covELLspacesettings['ell_max_lensing'], 1/2)
+                    self.ellrange_lensing_ul = np.power(np.linspace(
+                        start, end, covELLspacesettings['ell_bins_lensing'] + 1), 2).astype(int)
                     self.ellrange_lensing = .5 * (self.ellrange_lensing_ul[1:] + self.ellrange_lensing_ul[:-1])
                 else:
                     self.ellrange_lensing_ul = np.unique(np.geomspace(covELLspacesettings['ell_min_lensing'], covELLspacesettings['ell_max_lensing'], covELLspacesettings['ell_bins_lensing'] + 1).astype(int))

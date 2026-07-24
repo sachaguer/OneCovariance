@@ -764,7 +764,7 @@ class Input:
 
                     
 
-            elif self.ell_type != 'lin' and self.ell_type != 'log':
+            elif self.ell_type != 'lin' and self.ell_type != 'log' and self.ell_type != 'squareroot':
                 raise Exception("ConfigError: The binning type for ell bins " +
                                 "[covELLspace settings]: 'ell_type = " +
                                 config['covELLspace settings']['ell_type'] + "' is not " +
