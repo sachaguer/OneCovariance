@@ -2826,9 +2826,6 @@ class CovELLSpace(PolySpectra):
                             unique_34):
         if not isinstance(cov, np.ndarray):
             return 0
-        print(area_12)
-        print(area_34)
-        print(max(area_12,area_34))
         fsky = max(area_12,area_34)/(4.0*np.pi * self.deg2torad2)
         binned_covariance = np.zeros((len(ellrange_12_ul) - 1, len(ellrange_34_ul) - 1, len(cov[0,0,:,0,0,0,0,0]), len(cov[0,0,0,:,0,0,0,0]), len(cov[0,0,0,0,:,0,0,0]), len(cov[0,0,0,0,0,:,0,0]), len(cov[0,0,0,0,0,0,:,0]), len(cov[0,0,0,0,0,0,0,:])))
         for i_ell in range(len(ellrange_12_ul) - 1):
@@ -2853,10 +2850,6 @@ class CovELLSpace(PolySpectra):
                                         for l_tomo in range(l_tomo_start, len(cov[0,0,0,0,0,0,0,:])):
                                             if len(np.where(np.diagonal(cov[:, :, i_sample, j_sample, i_tomo, j_tomo, k_tomo, l_tomo]))[0]):
                                                 spline = UnivariateSpline(self.ellrange, np.diagonal(cov[:, :, i_sample, j_sample, i_tomo, j_tomo, k_tomo, l_tomo]), k=1, s=0, ext=1)
-                                                print(fsky)
-                                                print(len(integration_ell_12))
-                                                print(len(integration_ell_34))
-                                                print(np.sum(spline(overlapping_elements)/(2.*overlapping_elements + 1)))
                                                 binned_covariance[i_ell, j_ell, i_sample, j_sample, i_tomo, j_tomo, k_tomo, l_tomo] = np.sum(spline(overlapping_elements)/(2.*overlapping_elements + 1))/fsky/len(integration_ell_12)/len(integration_ell_34)
         return binned_covariance            
 
